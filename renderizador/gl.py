@@ -90,14 +90,8 @@ class GL:
     @staticmethod
     def triangleSet2D(vertices, colors):
         """Função usada para renderizar TriangleSet2D."""
-        points = [(vertices[i], vertices[i + 1]) for i in range(0, len(vertices), 2)]
-
         emissive_color = colors.get("emissiveColor", [1, 1, 1])
         color = [int(c * 255) for c in emissive_color]
-
-        x0, y0 = points[0][0] + 0.5, points[0][1] + 0.5
-        x1, y1 = points[1][0] + 0.5, points[1][1] + 0.5
-        x2, y2 = points[2][0] + 0.5, points[2][1] + 0.5
 
         def determinant(xa, ya, xb, yb):
             return xa * yb - ya * xb
@@ -105,20 +99,24 @@ class GL:
         def L(x, y, x0, y0, x1, y1):
             return determinant(x - x0, y - y0, x1 - x0, y1 - y0)
 
-        min_x = min(x0, x1, x2)
-        max_x = max(x0, x1, x2)
-        min_y = min(y0, y1, y2)
-        max_y = max(y0, y1, y2)
+        for i in range(0, len(vertices), 6):
+            x0, y0 = vertices[i] + 0.5, vertices[i + 1] + 0.5
+            x1, y1 = vertices[i + 2] + 0.5, vertices[i + 3] + 0.5
+            x2, y2 = vertices[i + 4] + 0.5, vertices[i + 5] + 0.5
 
-        for sx in range(int(min_x), int(max_x) + 1):
-            for sy in range(int(min_y), int(max_y) + 1):
-                L0 = L(sx, sy, x0, y0, x1, y1)
-                L1 = L(sx, sy, x1, y1, x2, y2)
-                L2 = L(sx, sy, x2, y2, x0, y0)
+            min_x = min(x0, x1, x2)
+            max_x = max(x0, x1, x2)
+            min_y = min(y0, y1, y2)
+            max_y = max(y0, y1, y2)
 
-                if (L0 > 0 and L1 > 0 and L2 > 0):
-                    gpu.GPU.draw_pixel([sx, sy], gpu.GPU.RGB8, color)
+            for sx in range(int(min_x), int(max_x) + 1):
+                for sy in range(int(min_y), int(max_y) + 1):
+                    L0 = L(sx, sy, x0, y0, x1, y1)
+                    L1 = L(sx, sy, x1, y1, x2, y2)
+                    L2 = L(sx, sy, x2, y2, x0, y0)
 
+                    if (L0 >= 0 and L1 >= 0 and L2 >= 0) and 0 <= sx < GL.width and 0 <= sy < GL.height:
+                        gpu.GPU.draw_pixel([sx, sy], gpu.GPU.RGB8, color)
 
     @staticmethod
     def circle2D(radius, colors):
