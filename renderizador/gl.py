@@ -54,27 +54,39 @@ class GL:
             x = int(point[i])
             y = int(point[i + 1])
             gpu.GPU.draw_pixel([x, y], gpu.GPU.RGB8, color_255)
-    @staticmethod
-    def polyline2D(lineSegments, colors):
-        """Função usada para renderizar Polyline2D."""
-        # Nessa função você receberá os pontos de uma linha no parâmetro lineSegments, esses
-        # pontos são uma lista de pontos x, y sempre na ordem. Assim point[0] é o valor da
-        # coordenada x do primeiro ponto, point[1] o valor y do primeiro ponto. Já point[2] é
-        # a coordenada x do segundo ponto e assim por diante. Assuma a quantidade de pontos
-        # pelo tamanho da lista. A quantidade mínima de pontos são 2 (4 valores), porém a
-        # função pode receber mais pontos para desenhar vários segmentos. Assuma que sempre
-        # vira uma quantidade par de valores.
-        # O parâmetro colors é um dicionário com os tipos cores possíveis, para o Polyline2D
-        # você pode assumir inicialmente o desenho das linhas com a cor emissiva (emissiveColor).
 
-        print("Polyline2D : lineSegments = {0}".format(lineSegments)) # imprime no terminal
-        print("Polyline2D : colors = {0}".format(colors)) # imprime no terminal as cores
+    @staticmethod
+    def polyline2D(lineSegments: list[float], colors: dict[str, list[float]]) -> None:
+        """Função usada para renderizar Polyline2D."""
+
+        points = [(lineSegments[i], lineSegments[i + 1]) for i in range(0, len(lineSegments), 2)]
         
-        # Exemplo:
-        pos_x = GL.width//2
-        pos_y = GL.height//2
-        gpu.GPU.draw_pixel([pos_x, pos_y], gpu.GPU.RGB8, [255, 0, 255])  # altera pixel (u, v, tipo, r, g, b)
-        # cuidado com as cores, o X3D especifica de (0,1) e o Framebuffer de (0,255)
+        emissive_color = colors.get("emissiveColor", [1, 1, 1])
+        color = [int(c * 255) for c in emissive_color]
+        
+        def draw_line(x0, y0, x1, y1):
+            dx = abs(x1 - x0)
+            dy = abs(y1 - y0)
+            sx = 1 if x0 < x1 else -1
+            sy = 1 if y0 < y1 else -1
+            err = dx - dy
+
+            while True:
+                gpu.GPU.draw_pixel([x0, y0], gpu.GPU.RGB8, color)
+                if x0 == x1 and y0 == y1:
+                    break
+                e2 = err * 2
+                if e2 > -dy:
+                    err -= dy
+                    x0 += sx
+                if e2 < dx:
+                    err += dx
+                    y0 += sy
+
+        for i in range(len(points) - 1):
+            x0, y0 = points[i]
+            x1, y1 = points[i + 1]
+            draw_line(int(x0), int(y0), int(x1), int(y1))
 
     @staticmethod
     def circle2D(radius, colors):
