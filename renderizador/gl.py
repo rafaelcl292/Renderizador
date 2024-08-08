@@ -52,8 +52,8 @@ class GL:
 
     @staticmethod
     def draw_line(x0, y0, x1, y1, color):
-        min_x, max_x = 0, GL.width - 1
-        min_y, max_y = 0, GL.height - 1
+        min_x, max_x = 0, GL.width
+        min_y, max_y = 0, GL.height
         dx = abs(x1 - x0)
         dy = abs(y1 - y0)
         sx = 1 if x0 < x1 else -1
