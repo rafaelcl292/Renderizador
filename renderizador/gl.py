@@ -32,28 +32,24 @@ class GL:
         GL.far = far
 
     @staticmethod
+    def draw_point_safe(x, y, color):
+        """Desenha um ponto na tela se estiver dentro dos limites."""
+        if 0 <= x < GL.width and 0 <= y < GL.height:
+            gpu.GPU.draw_pixel([x, y], gpu.GPU.RGB8, color)
+
+    @staticmethod
     def polypoint2D(point: list[float], colors: dict[str, list[float]]) -> None:
         """Função usada para renderizar Polypoint2D."""
-        # Nessa função você receberá pontos no parâmetro point, esses pontos são uma lista
-        # de pontos x, y sempre na ordem. Assim point[0] é o valor da coordenada x do
-        # primeiro ponto, point[1] o valor y do primeiro ponto. Já point[2] é a
-        # coordenada x do segundo ponto e assim por diante. Assuma a quantidade de pontos
-        # pelo tamanho da lista e assuma que sempre vira uma quantidade par de valores.
-        # O parâmetro colors é um dicionário com os tipos cores possíveis, para o Polypoint2D
-        # você pode assumir inicialmente o desenho dos pontos com a cor emissiva (emissiveColor).
-
         emissive_color = colors.get("emissiveColor", [1, 1, 1])
         color_255 = [int(c * 255) for c in emissive_color]
 
         for i in range(0, len(point), 2):
             x = int(point[i])
             y = int(point[i + 1])
-            gpu.GPU.draw_pixel([x, y], gpu.GPU.RGB8, color_255)
+            GL.draw_point_safe(x, y, color_255)
 
     @staticmethod
     def draw_line(x0, y0, x1, y1, color):
-        min_x, max_x = 0, GL.width
-        min_y, max_y = 0, GL.height
         dx = abs(x1 - x0)
         dy = abs(y1 - y0)
         sx = 1 if x0 < x1 else -1
@@ -61,8 +57,7 @@ class GL:
         err = dx - dy
 
         while True:
-            if min_x <= x0 < max_x and min_y <= y0 < max_y:
-                gpu.GPU.draw_pixel([x0, y0], gpu.GPU.RGB8, color)
+            GL.draw_point_safe(x0, y0, color)
             if x0 == x1 and y0 == y1:
                 break
             e2 = err * 2
@@ -76,7 +71,6 @@ class GL:
     @staticmethod
     def polyline2D(lineSegments: list[float], colors: dict[str, list[float]]) -> None:
         """Função usada para renderizar Polyline2D."""
-
         points = [(lineSegments[i], lineSegments[i + 1]) for i in range(0, len(lineSegments), 2)]
 
         emissive_color = colors.get("emissiveColor", [1, 1, 1])
@@ -115,8 +109,8 @@ class GL:
                     L1 = L(sx, sy, x1, y1, x2, y2)
                     L2 = L(sx, sy, x2, y2, x0, y0)
 
-                    if (L0 >= 0 and L1 >= 0 and L2 >= 0) and 0 <= sx < GL.width and 0 <= sy < GL.height:
-                        gpu.GPU.draw_pixel([sx, sy], gpu.GPU.RGB8, color)
+                    if (L0 >= 0 and L1 >= 0 and L2 >= 0):
+                        GL.draw_point_safe(sx, sy, color)
 
     @staticmethod
     def circle2D(radius, colors):
@@ -134,8 +128,7 @@ class GL:
         for sx in range(min_x, max_x + 1):
             for sy in range(min_y, max_y + 1):
                 if (sx - center_x) ** 2 + (sy - center_y) ** 2 <= radius ** 2:
-                    if 0 <= sx < GL.width and 0 <= sy < GL.height:
-                        gpu.GPU.draw_pixel([sx, sy], gpu.GPU.RGB8, color)
+                    GL.draw_point_safe(sx, sy, color)
 
     @staticmethod
     def triangleSet(point, colors):
