@@ -16,10 +16,14 @@ import time  # Para operações com tempo
 import gpu  # Simula os recursos de uma GPU
 import numpy as np  # Biblioteca do Numpy
 
-transformation_stack = []
+width = 300
+height = 200
 
 
 class GL:
+    transformation_stack = [np.identity(4)]
+    view_matrix = np.identity(4)
+    projection_matrix = np.identity(4)
     """Classe que representa a biblioteca gráfica (Graphics Library)."""
 
     width = 800  # largura da tela
@@ -98,12 +102,17 @@ class GL:
         emissive_color = colors.get("emissiveColor", [1, 1, 1])
         color = [int(c * 255) for c in emissive_color]
 
+        diffuse_color = colors.get("diffuseColor", [1, 1, 1])
+        if color == [0, 0, 0]:
+            color = [int(c * 255) for c in diffuse_color]
+
         def determinant(xa, ya, xb, yb):
             return xa * yb - ya * xb
 
         def L(x, y, x0, y0, x1, y1):
             return determinant(x - x0, y - y0, x1 - x0, y1 - y0)
 
+        print("OOOOOOOOOOOOOOOO", vertices)
         for i in range(0, len(vertices), 6):
             x0, y0 = vertices[i] + 0.5, vertices[i + 1] + 0.5
             x1, y1 = vertices[i + 2] + 0.5, vertices[i + 3] + 0.5
@@ -156,6 +165,77 @@ class GL:
         # inicialmente, para o TriangleSet, o desenho das linhas com a cor emissiva
         # (emissiveColor), conforme implementar novos materias você deverá suportar outros
         # tipos de cores.
+        for i in range(0, len(point), 9):
+            vertices = np.array(
+                [
+                    [point[i], point[i + 3], point[i + 6]],
+                    [point[i+1], point[i + 4], point[i + 7]],
+                    [point[i+2], point[i + 5], point[i + 8]],
+                    [1, 1, 1],
+                ]
+            )
+
+            for i in range(len(GL.transformation_stack) - 1, -1, -1):
+                vertices = np.matmul(GL.transformation_stack[i], vertices)
+
+            matrix_look_at = np.matmul(GL.view_matrix, vertices)
+            NDC = np.matmul(GL.projection_matrix, matrix_look_at)
+
+            # normalize vertices
+            p0 = np.array(
+                [
+                    NDC[0][0] / NDC[3][0],
+                    NDC[1][0] / NDC[3][0],
+                    NDC[2][0] / NDC[3][0],
+                ]
+            )
+            p1 = np.array(
+                [
+                    NDC[0][1] / NDC[3][1],
+                    NDC[1][1] / NDC[3][1],
+                    NDC[2][1] / NDC[3][1],
+                ]
+            )
+            p2 = np.array(
+                [
+                    NDC[0][2] / NDC[3][2],
+                    NDC[1][2] / NDC[3][2],
+                    NDC[2][2] / NDC[3][2],
+                ]
+            )
+                
+            width = 300
+            height = 200
+            tela_matrix = np.array(
+                [
+                    [width / 2, 0, 0, width / 2],
+                    [0, -height / 2, 0, height / 2],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1],
+                ]
+            )
+            vertices_tela = np.array(
+                [
+                    [p0[0], p1[0], p2[0]],
+                    [p0[1], p1[1], p2[1]],
+                    [p0[2], p1[2], p2[2]],
+                    [1, 1, 1],
+                ]
+            )
+
+            vertices_final = np.matmul(tela_matrix, vertices_tela)
+
+            pontos = [
+                vertices_final[0][0],
+                vertices_final[1][0],
+                vertices_final[0][1],
+                vertices_final[1][1],
+                vertices_final[0][2],
+                vertices_final[1][2],
+            ]
+
+            pontos = np.array(pontos)
+            GL.triangleSet2D(pontos, colors)
 
         # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
         print(
@@ -168,7 +248,7 @@ class GL:
         # Exemplo de desenho de um pixel branco na coordenada 10, 10
         gpu.GPU.draw_pixel(
             [10, 10], gpu.GPU.RGB8, [255, 255, 255]
-        )  # altera pixel
+        )  # altevertices[i + 2]ra pixel
 
     @staticmethod
     def viewpoint(position, orientation, fieldOfView):
@@ -178,6 +258,76 @@ class GL:
         # perspectiva para poder aplicar nos pontos dos objetos geométricos.
 
         # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
+        matrix_translation = np.array(
+            [
+                [1, 0, 0, position[0]],
+                [0, 1, 0, position[1]],
+                [0, 0, 1, position[2]],
+                [0, 0, 0, 1],
+            ]
+        )
+        x, y, z, a = orientation
+        normalize = np.linalg.norm([x, y, z])
+        x /= normalize
+        y /= normalize
+        z /= normalize
+
+        half_angle = a / 2
+        w = np.cos(half_angle)
+        sin_half_angle = np.sin(half_angle)
+        x *= sin_half_angle
+        y *= sin_half_angle
+        z *= sin_half_angle
+        matrix_rotation = np.array(
+            [
+                [
+                    1 - 2 * y**2 - 2 * z**2,
+                    2 * x * y - 2 * w * z,
+                    2 * x * z + 2 * w * y,
+                    0,
+                ],
+                [
+                    2 * x * y + 2 * w * z,
+                    1 - 2 * x**2 - 2 * z**2,
+                    2 * y * z - 2 * w * x,
+                    0,
+                ],
+                [
+                    2 * x * z - 2 * w * y,
+                    2 * y * z + 2 * w * x,
+                    1 - 2 * x**2 - 2 * y**2,
+                    0,
+                ],
+                [0, 0, 0, 1],
+            ]
+        )
+
+        # invert matrix
+        matrix_translation = np.linalg.inv(matrix_translation)
+        matrix_rotation = np.linalg.inv(matrix_rotation)
+
+        GL.view_matrix = np.matmul(matrix_rotation, matrix_translation)
+
+        fovy = 2 * np.arctan(
+            np.tan(fieldOfView / 2)
+            * (height / ((width**2 + height**2) ** 0.5))
+        )
+
+        aspect_ratio = width / height
+        near = 0.01
+        far = 1000
+        top = near * np.tan(fovy)
+        right = top * aspect_ratio
+
+        GL.projection_matrix = np.array(
+            [
+                [near / right, 0, 0, 0],
+                [0, near / top, 0, 0],
+                [0, 0, -((far + near) / (far - near)), (-2 * far * near) / (far - near)],
+                [0, 0, -1, 0],
+            ]
+        )
+
         print("Viewpoint : ", end="")
         print("position = {0} ".format(position), end="")
         print("orientation = {0} ".format(orientation), end="")
@@ -250,9 +400,10 @@ class GL:
         matrix_rotation = matrix_rotation.astype(np.float64)
         matrix_scale = matrix_scale.astype(np.float64)
 
-        matrix = np.matmul(matrix_tranform, matrix_rotation, matrix_scale)
+        matrix = np.matmul(matrix_tranform, np.matmul(matrix_rotation, matrix_scale))
 
-        transformation_stack.append(matrix)
+        GL.transformation_stack.append(matrix)
+        print("tranform matrix = ", matrix)
 
     @staticmethod
     def transform_out():
@@ -261,7 +412,7 @@ class GL:
         # grafo de cena. Não são passados valores, porém quando se sai de um nó transform se
         # deverá recuperar a matriz de transformação dos modelos do mundo da estrutura de
         # pilha implementada.
-        transformation_stack.pop()
+        GL.transformation_stack.pop()
 
         # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
         print("Saindo de Transform")
