@@ -5,7 +5,7 @@
 """
 Biblioteca Gráfica / Graphics Library.
 
-Desenvolvido por: <SEU NOME AQUI>
+Desenvolvido por: Bruno Saboya e Rafael Leventhal
 Disciplina: Computação Gráfica
 Data: <DATA DE INÍCIO DA IMPLEMENTAÇÃO>
 """
@@ -112,7 +112,6 @@ class GL:
         def L(x, y, x0, y0, x1, y1):
             return determinant(x - x0, y - y0, x1 - x0, y1 - y0)
 
-        print("OOOOOOOOOOOOOOOO", vertices)
         for i in range(0, len(vertices), 6):
             x0, y0 = vertices[i] + 0.5, vertices[i + 1] + 0.5
             x1, y1 = vertices[i + 2] + 0.5, vertices[i + 3] + 0.5
@@ -344,9 +343,6 @@ class GL:
         # Quando se entrar em um nó transform se deverá salvar a matriz de transformação dos
         # modelos do mundo em alguma estrutura de pilha.
 
-        # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
-        print("Transform : ", end="")
-        # print("translation = {0} ".format(translation), end="")  # imprime no terminal
         matrix_tranform = np.array(
             [
                 [1, 0, 0, translation[0]],
@@ -355,7 +351,6 @@ class GL:
                 [0, 0, 0, 1],
             ]
         )
-        # print("scale = {0} ".format(scale), end="")  # imprime no terminal
         matrix_scale = np.array(
             [
                 [scale[0], 0, 0, 0],
@@ -364,7 +359,6 @@ class GL:
                 [0, 0, 0, 1],
             ]
         )
-        # print("rotation = {0} ".format(rotation), end="")  # imprime no terminal
         x, y, z, t = rotation
         half_angle = t / 2
         w = np.cos(half_angle)
@@ -403,7 +397,6 @@ class GL:
         matrix = np.matmul(matrix_tranform, np.matmul(matrix_rotation, matrix_scale))
 
         GL.transformation_stack.append(matrix)
-        print("tranform matrix = ", matrix)
 
     @staticmethod
     def transform_out():
