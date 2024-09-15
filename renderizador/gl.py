@@ -30,6 +30,7 @@ class GL:
     height = 600  # altura da tela
     near = 0.01  # plano de corte próximo
     far = 1000  # plano de corte distante
+    forward_direction = np.array([0,0,1])
 
     @staticmethod
     def setup(width, height, near=0.01, far=1000):
@@ -244,11 +245,6 @@ class GL:
             "TriangleSet : colors = {0}".format(colors)
         )  # imprime no terminal as cores
 
-        # Exemplo de desenho de um pixel branco na coordenada 10, 10
-        gpu.GPU.draw_pixel(
-            [10, 10], gpu.GPU.RGB8, [255, 255, 255]
-        )  # altevertices[i + 2]ra pixel
-
     @staticmethod
     def viewpoint(position, orientation, fieldOfView):
         """Função usada para renderizar (na verdade coletar os dados) de Viewpoint."""
@@ -433,10 +429,29 @@ class GL:
             "TriangleStripSet : colors = {0}".format(colors)
         )  # imprime no terminal as cores
 
-        # Exemplo de desenho de um pixel branco na coordenada 10, 10
-        gpu.GPU.draw_pixel(
-            [10, 10], gpu.GPU.RGB8, [255, 255, 255]
-        )  # altera pixel
+        index_vertex = 0
+        for strip in stripCount:
+            for i in range(strip - 2):
+                x1 = point[index_vertex * 3]
+                y1 = point[index_vertex * 3 + 1]
+                z1 = point[index_vertex * 3 + 2]
+
+                x2 = point[(index_vertex + 1) * 3]
+                y2 = point[(index_vertex + 1) * 3 + 1]
+                z2 = point[(index_vertex + 1) * 3 + 2]
+
+                x3 = point[(index_vertex + 2) * 3]
+                y3 = point[(index_vertex + 2) * 3 + 1]
+                z3 = point[(index_vertex + 2) * 3 + 2]
+
+                if i % 2 == 0:
+                    points = [x1, y1, z1, x2, y2, z2, x3, y3, z3]
+                else:
+                    points = [x2, y2, z2, x1, y1, z1, x3, y3, z3]
+
+                GL.triangleSet(points, colors)
+                index_vertex += 1
+            index_vertex += 2
 
     @staticmethod
     def indexedTriangleStripSet(point, index, colors):
@@ -453,20 +468,56 @@ class GL:
         # depois 2, 3 e 4, e assim por diante. Cuidado com a orientação dos vértices, ou seja,
         # todos no sentido horário ou todos no sentido anti-horário, conforme especificado.
 
-        # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
-        print(
-            "IndexedTriangleStripSet : pontos = {0}, index = {1}".format(
-                point, index
-            )
-        )
-        print(
-            "IndexedTriangleStripSet : colors = {0}".format(colors)
-        )  # imprime as cores
+        strips = []
+        current_strip = []
 
-        # Exemplo de desenho de um pixel branco na coordenada 10, 10
-        gpu.GPU.draw_pixel(
-            [10, 10], gpu.GPU.RGB8, [255, 255, 255]
-        )  # altera pixel
+        # Organize the indices into triangle strips
+        for idx in index:
+            if idx == -1:  # End of a strip
+                if current_strip:
+                    strips.append(current_strip)
+                    current_strip = []
+            else:
+                current_strip.append(idx)  # Append indices to the current strip
+
+        if current_strip:
+            strips.append(current_strip)  # Append the last strip if not added
+
+        # Iterate over each strip to create triangles
+        for strip in strips:
+            for i in range(len(strip) - 2):
+                if i % 2 == 0:
+                    # Regular order (even index)
+                    points = [
+                        point[strip[i] * 3], point[strip[i] * 3 + 1], point[strip[i] * 3 + 2],   # Vertex 1
+                        point[strip[i + 1] * 3], point[strip[i + 1] * 3 + 1], point[strip[i + 1] * 3 + 2], # Vertex 2
+                        point[strip[i + 2] * 3], point[strip[i + 2] * 3 + 1], point[strip[i + 2] * 3 + 2]  # Vertex 3
+                    ]
+                else:
+                    # Swapped order (odd index, to maintain consistent winding)
+                    points = [
+                        point[strip[i + 1] * 3], point[strip[i + 1] * 3 + 1], point[strip[i + 1] * 3 + 2], # Vertex 2 (swapped)
+                        point[strip[i] * 3], point[strip[i] * 3 + 1], point[strip[i] * 3 + 2],  # Vertex 1
+                        point[strip[i + 2] * 3], point[strip[i + 2] * 3 + 1], point[strip[i + 2] * 3 + 2]  # Vertex 3
+                    ]
+                # Render the triangle using GL.triangleSet
+                GL.triangleSet(points, colors)
+
+
+    def orientation(p0,p1,p2):
+        v1 = np.array(p1) - np.array(p0)
+        v2 = np.array(p2) - np.array(p0)
+        
+        normal = np.cross(v1, v2)
+        norm_value = np.linalg.norm(normal)
+    
+        if norm_value != 0 and not np.isnan(norm_value):
+            normal = normal / norm_value
+        else:
+            normal = np.array([0, 0, 0])
+
+        d = np.dot(normal, GL.forward_direction)
+        return d
 
     @staticmethod
     def box(size, colors):
@@ -483,11 +534,6 @@ class GL:
         print(
             "Box : colors = {0}".format(colors)
         )  # imprime no terminal as cores
-
-        # Exemplo de desenho de um pixel branco na coordenada 10, 10
-        gpu.GPU.draw_pixel(
-            [10, 10], gpu.GPU.RGB8, [255, 255, 255]
-        )  # altera pixel
 
     @staticmethod
     def indexedFaceSet(
@@ -550,10 +596,50 @@ class GL:
             "IndexedFaceSet : colors = {0}".format(colors)
         )  # imprime no terminal as cores
 
-        # Exemplo de desenho de um pixel branco na coordenada 10, 10
-        gpu.GPU.draw_pixel(
-            [10, 10], gpu.GPU.RGB8, [255, 255, 255]
-        )  # altera pixel
+        # points = []
+        # for i in range(0, len(coord) -2, 3):
+        #     points.append([coord[i], coord[i + 1], coord[i + 2]])
+
+        # i=0
+        # point_origin = None
+
+        # while i < len(coordIndex) - 1:
+        #     if coordIndex[i] == -1 or coordIndex[i + 1] == -1:
+        #         point_origin = None
+        #         i += 1
+        #         continue
+            
+        #     if point_origin is None:
+        #         point_origin = coordIndex[i]
+        #         i += 1
+        #         continue
+
+        #     point_0 = points[point_origin]
+        #     point_1 = points[coordIndex[i]]
+        #     point_2 = points[coordIndex[i + 1]]
+
+        #     points = [point_0[0], point_0[1], point_0[2], point_1[0], point_1[1], point_1[2], point_2[0], point_2[1], point_2[2]]
+
+        #     GL.triangleSet(points, colors)
+        #     i += 1
+
+        face = []
+        for idx in coordIndex:
+            if idx == -1:
+                if len(face) > 3:
+                    for i in range(1, len(face) - 1):
+                        p0 = face[0]
+                        p1 = face[i]
+                        p2 = face[i + 1]
+
+                        d = GL.orientation(p0, p1, p2)
+                        if d > 0:
+                            GL.triangleSet([p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]], colors)
+                        else:
+                            GL.triangleSet([p0[0], p0[1], p0[2], p2[0], p2[1], p2[2], p1[0], p1[1], p1[2]], colors)
+                face = []
+            else:
+                face.append((coord[idx * 3], coord[idx * 3 + 1], coord[idx * 3 + 2]))
 
     @staticmethod
     def sphere(radius, colors):
