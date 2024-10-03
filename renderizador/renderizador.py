@@ -19,6 +19,7 @@ import gpu          # Simula os recursos de uma GPU
 
 import x3d          # Faz a leitura do arquivo X3D, gera o grafo de cena e faz traversal
 import scenegraph   # Imprime o grafo de cena no console
+import numpy as np
 
 LARGURA = 60  # Valor padrão para largura da tela
 ALTURA = 40   # Valor padrão para altura da tela
@@ -41,13 +42,14 @@ class Renderizador:
         # Configurando color buffers para exibição na tela
 
         # Cria uma (1) posição de FrameBuffer na GPU
-        fbo = gpu.GPU.gen_framebuffers(1)
+        fbo = gpu.GPU.gen_framebuffers(2)
 
         # Define o atributo FRONT como o FrameBuffe principal
         self.framebuffers["FRONT"] = fbo[0]
+        self.framebuffers["BACK"] = fbo[1]
 
         # Define que a posição criada será usada para desenho e leitura
-        gpu.GPU.bind_framebuffer(gpu.GPU.FRAMEBUFFER, self.framebuffers["FRONT"])
+        # gpu.GPU.bind_framebuffer(gpu.GPU.FRAMEBUFFER, self.framebuffers["FRONT"])
         # Opções:
         # - DRAW_FRAMEBUFFER: Faz o bind só para escrever no framebuffer
         # - READ_FRAMEBUFFER: Faz o bind só para leitura no framebuffer
@@ -62,6 +64,13 @@ class Renderizador:
             gpu.GPU.RGB8,
             self.width,
             self.height
+        )
+        gpu.GPU.framebuffer_storage(
+            self.framebuffers["BACK"],
+            gpu.GPU.COLOR_ATTACHMENT,
+            gpu.GPU.RGB8,
+            self.width * 2,
+            self.height * 2
         )
 
         # Descomente as seguintes linhas se for usar um Framebuffer para profundidade
@@ -97,6 +106,7 @@ class Renderizador:
     def pre(self):
         """Rotinas pré renderização."""
         # Função invocada antes do processo de renderização iniciar.
+        gpu.GPU.bind_framebuffer(gpu.GPU.FRAMEBUFFER, self.framebuffers["BACK"])
 
         # Limpa o frame buffers atual
         gpu.GPU.clear_buffer()
@@ -109,9 +119,30 @@ class Renderizador:
         """Rotinas pós renderização."""
         # Função invocada após o processo de renderização terminar.
 
-        # Essa é uma chamada conveniente para manipulação de buffers
-        # ao final da renderização de um frame. Como por exemplo, executar
-        # downscaling da imagem.
+        img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+
+        for h in range(self.height):
+            for w in range(self.width):
+                xy = np.array(gpu.GPU.read_pixel([w, h], gpu.GPU.RGB8), dtype=np.float64)
+                xy10 = np.array(gpu.GPU.read_pixel([w + 1, h], gpu.GPU.RGB8), dtype=np.float64)
+                xy11 = np.array(gpu.GPU.read_pixel([w + 1, h + 1], gpu.GPU.RGB8), dtype=np.float64)
+                xy01 = np.array(gpu.GPU.read_pixel([w, h + 1], gpu.GPU.RGB8), dtype=np.float64)
+
+                r = (xy[0] + xy10[0] + xy11[0] + xy01[0]) / 4
+                g = (xy[1] + xy10[1] + xy11[1] + xy01[1]) / 4
+                b = (xy[2] + xy10[2] + xy11[2] + xy01[2]) / 4
+
+                img[h, w, 0] = r
+                img[h, w, 1] = g
+                img[h, w, 2] = b
+        
+        gpu.GPU.bind_framebuffer(gpu.GPU.FRAMEBUFFER, self.framebuffers["FRONT"])
+        gpu.GPU.clear_buffer()
+
+        for h in range(self.height):
+            for w in range(self.width):
+                gpu.GPU.draw_pixel([w, h], gpu.GPU.RGB8, img[h, w].tolist())
+
 
         # Método para a troca dos buffers (NÃO IMPLEMENTADO)
         # Esse método será utilizado na fase de implementação de animações
@@ -181,8 +212,8 @@ class Renderizador:
 
         # Iniciando Biblioteca Gráfica
         gl.GL.setup(
-            self.width,
-            self.height,
+            self.width * 2,
+            self.height * 2,
             near=0.01,
             far=1000
         )

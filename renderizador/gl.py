@@ -107,6 +107,89 @@ class GL:
         if color == [0, 0, 0]:
             color = [int(c * 255) for c in diffuse_color]
 
+        vertex_colors = colors.get("colorVertices", None)
+        texCoord = colors.get("texCoord", None)
+        current_texture = colors.get("currentTexture", None)
+        Z = colors.get("Z", None)
+
+        def barycentric_coords(point, vertex0, vertex1, vertex2):
+            px, py = point
+            vx0, vy0 = vertex0
+            vx1, vy1 = vertex1
+            vx2, vy2 = vertex2
+
+            numerator_alpha = -(px - vx1) * (vy2 - vy1) + (py - vy1) * (vx2 - vx1)
+            denominator_alpha = -(vx0 - vx1) * (vy2 - vy1) + (vy0 - vy1) * (vx2 - vx1)
+            alpha = numerator_alpha / denominator_alpha
+
+            numerator_beta = -(px - vx2) * (vy0 - vy2) + (py - vy2) * (vx0 - vx2)
+            denominator_beta = -(vx1 - vx2) * (vy0 - vy2) + (vy1 - vy2) * (vx0 - vx2)
+            beta = numerator_beta / denominator_beta
+
+            gamma = 1.0 - alpha - beta
+
+            return alpha, beta, gamma
+
+        def interpolate_component(alpha, beta, gamma, z, c0, c1, c2, index):
+            return int((alpha * c0[index] + beta * c1[index] + gamma * c2[index]) * z * 255)
+
+        def interpolated_color(alpha_parameter, beta_parameter, gamma_parameter, interpolated_Z, c0, c1, c2):
+            return [
+                interpolate_component(
+                    alpha_parameter,
+                    beta_parameter,
+                    gamma_parameter,
+                    interpolated_Z,
+                    np.array(c0) / Z[0],
+                    np.array(c1) / Z[1],
+                    np.array(c2) / Z[2],
+                    i
+                )
+                for i in range(3)
+            ]
+
+        def bilinear_interpolation(uv, texture):
+            u, v = uv
+            height, width = texture.shape[0], texture.shape[1]
+
+            u = 1 - u
+            u = np.clip(u, 0.0, 1.0)
+            v = np.clip(v, 0.0, 1.0)
+
+            u = u * (width - 1)
+            v = v * (height - 1)
+
+            x0, y0 = int(np.floor(u)), int(np.floor(v))
+            x1, y1 = min(x0 + 1, width - 1), min(y0 + 1, height - 1)
+
+            s_ratio = u - x0
+            t_ratio = v - y0
+
+            texel00 = texture[y0, x0]
+            texel01 = texture[y1, x0]
+            texel10 = texture[y0, x1]
+            texel11 = texture[y1, x1]
+
+            color_top = texel00 * (1 - s_ratio) + texel10 * s_ratio
+            color_bottom = texel01 * (1 - s_ratio) + texel11 * s_ratio
+            final_color = color_top * (1 - t_ratio) + color_bottom * t_ratio
+            return final_color.astype(int)
+
+        def apply_texture(point, vertex0, vertex1, vertex2, tex_coords, texture, depth):
+            alpha, beta, gamma = barycentric_coords(point, vertex0, vertex1, vertex2)
+            w0 = alpha / depth[0]
+            w1 = beta / depth[1]
+            w2 = gamma / depth[2]
+            w_sum = w0 + w1 + w2
+            alpha_p = w0 / w_sum
+            beta_p = w1 / w_sum
+            gamma_p = w2 / w_sum
+            v = alpha_p * tex_coords[0][0] + beta_p * tex_coords[1][0] + gamma_p * tex_coords[2][0]
+            u = alpha_p * tex_coords[0][1] + beta_p * tex_coords[1][1] + gamma_p * tex_coords[2][1]
+            uv = (u, v)
+            texture_color = bilinear_interpolation(uv, texture)
+            return [texture_color[0], texture_color[1], texture_color[2]]
+
         def determinant(xa, ya, xb, yb):
             return xa * yb - ya * xb
 
@@ -130,7 +213,25 @@ class GL:
                     L2 = L(sx, sy, x2, y2, x0, y0)
 
                     if L0 >= 0 and L1 >= 0 and L2 >= 0:
-                        GL.draw_point_safe(sx, sy, color)
+                        if texCoord is not None and current_texture is not None:
+                            color = apply_texture((sx, sy), (x0, y0), (x1, y1), (x2, y2), texCoord, current_texture, Z)
+                            GL.draw_point_safe(sx, sy, color)
+                        elif vertex_colors:
+                            alpha, beta, gamma = barycentric_coords((sx, sy), (x0, y0), (x1, y1), (x2, y2))
+                            interpolated_Z = alpha * Z[0] + beta * Z[1] + gamma * Z[2]
+                            interpol = interpolated_color(
+                                alpha,
+                                beta,
+                                gamma,
+                                interpolated_Z,
+                                vertex_colors[0],
+                                vertex_colors[1],
+                                vertex_colors[2]
+                            )
+                            interpol = [min(255, a) for a in interpol]
+                            GL.draw_point_safe(sx, sy, interpol)
+                        else:
+                            GL.draw_point_safe(sx, sy, color)
 
     @staticmethod
     def circle2D(radius, colors):
@@ -180,6 +281,7 @@ class GL:
                 vertices = np.matmul(GL.transformation_stack[i], vertices)
 
             matrix_look_at = np.matmul(GL.view_matrix, vertices)
+            colors["Z"] = (int(matrix_look_at[2][0]), int(matrix_look_at[2][1]), int(matrix_look_at[2][2]))
             NDC = np.matmul(GL.projection_matrix, matrix_look_at)
 
             # normalize vertices
@@ -237,14 +339,6 @@ class GL:
 
             pontos = np.array(pontos)
             GL.triangleSet2D(pontos, colors)
-
-        # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
-        print(
-            "TriangleSet : pontos = {0}".format(point)
-        )  # imprime no terminal pontos
-        print(
-            "TriangleSet : colors = {0}".format(colors)
-        )  # imprime no terminal as cores
 
     @staticmethod
     def viewpoint(position, orientation, fieldOfView):
@@ -324,11 +418,6 @@ class GL:
             ]
         )
 
-        print("Viewpoint : ", end="")
-        print("position = {0} ".format(position), end="")
-        print("orientation = {0} ".format(orientation), end="")
-        print("fieldOfView = {0} ".format(fieldOfView))
-
     @staticmethod
     def transform_in(translation, scale, rotation):
         """Função usada para renderizar (na verdade coletar os dados) de Transform."""
@@ -406,9 +495,6 @@ class GL:
         # pilha implementada.
         GL.transformation_stack.pop()
 
-        # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
-        print("Saindo de Transform")
-
     @staticmethod
     def triangleStripSet(point, stripCount, colors):
         """Função usada para renderizar TriangleStripSet."""
@@ -423,15 +509,6 @@ class GL:
         # primeiro triângulo será com os vértices 0, 1 e 2, depois serão os vértices 1, 2 e 3,
         # depois 2, 3 e 4, e assim por diante. Cuidado com a orientação dos vértices, ou seja,
         # todos no sentido horário ou todos no sentido anti-horário, conforme especificado.
-
-        # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
-        print("TriangleStripSet : pontos = {0} ".format(point), end="")
-        for i, strip in enumerate(stripCount):
-            print("strip[{0}] = {1} ".format(i, strip), end="")
-        print("")
-        print(
-            "TriangleStripSet : colors = {0}".format(colors)
-        )  # imprime no terminal as cores
 
         index_vertex = 0
         for strip in stripCount:
@@ -573,80 +650,43 @@ class GL:
         # textura para o poligono, para isso, use as coordenadas de textura e depois aplique a
         # cor da textura conforme a posição do mapeamento. Dentro da classe GPU já está
         # implementadado um método para a leitura de imagens.
-
-        # Os prints abaixo são só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
-        print("IndexedFaceSet : ")
-        if coord:
-            print(
-                "\tpontos(x, y, z) = {0}, coordIndex = {1}".format(
-                    coord, coordIndex
-                )
-            )
-        print("colorPerVertex = {0}".format(colorPerVertex))
-        if colorPerVertex and color and colorIndex:
-            print(
-                "\tcores(r, g, b) = {0}, colorIndex = {1}".format(
-                    color, colorIndex
-                )
-            )
-        if texCoord and texCoordIndex:
-            print(
-                "\tpontos(u, v) = {0}, texCoordIndex = {1}".format(
-                    texCoord, texCoordIndex
-                )
-            )
+        # print(colors)
+        current_face = []
+        if not colorPerVertex:
+            color = [1, 1, 1]
+        if colorPerVertex:
+            if not color or not colorIndex:
+                colorPerVertex = False
+                color = [1, 1, 1]
         if current_texture:
-            image = gpu.GPU.load_texture(current_texture[0])
-            print("\t Matriz com image = {0}".format(image))
-            print("\t Dimensões da image = {0}".format(image.shape))
-        print(
-            "IndexedFaceSet : colors = {0}".format(colors)
-        )  # imprime no terminal as cores
+            colors["currentTexture"] = gpu.GPU.load_texture(current_texture[0])
+            if not texCoordIndex:
+                texCoordIndex = coordIndex
 
-        # points = []
-        # for i in range(0, len(coord) -2, 3):
-        #     points.append([coord[i], coord[i + 1], coord[i + 2]])
 
-        # i=0
-        # point_origin = None
+        for index in coordIndex:
+            if index == -1:
+                if len(current_face) >= 3:
+                    for x in range(1, len(current_face) - 1):
+                        p0, c0, t0 = current_face[0]
+                        p1, c1, t1 = current_face[x]
+                        p2, c2, t2 = current_face[x + 1]
 
-        # while i < len(coordIndex) - 1:
-        #     if coordIndex[i] == -1 or coordIndex[i + 1] == -1:
-        #         point_origin = None
-        #         i += 1
-        #         continue
-            
-        #     if point_origin is None:
-        #         point_origin = coordIndex[i]
-        #         i += 1
-        #         continue
+                        color0 = [color[c0 * 3], color[c0 * 3 + 1], color[c0 * 3 + 2]]
+                        color1 = [color[c1 * 3], color[c1 * 3 + 1], color[c1 * 3 + 2]]
+                        color2 = [color[c2 * 3], color[c2 * 3 + 1], color[c2 * 3 + 2]]
 
-        #     point_0 = points[point_origin]
-        #     point_1 = points[coordIndex[i]]
-        #     point_2 = points[coordIndex[i + 1]]
-
-        #     points = [point_0[0], point_0[1], point_0[2], point_1[0], point_1[1], point_1[2], point_2[0], point_2[1], point_2[2]]
-
-        #     GL.triangleSet(points, colors)
-        #     i += 1
-
-        face = []
-        for idx in coordIndex:
-            if idx == -1:
-                if len(face) > 3:
-                    for i in range(1, len(face) - 1):
-                        p0 = face[0]
-                        p1 = face[i]
-                        p2 = face[i + 1]
-
-                        d = GL.orientation(p0, p1, p2)
-                        if d > 0:
-                            GL.triangleSet([p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]], colors)
-                        else:
-                            GL.triangleSet([p0[0], p0[1], p0[2], p2[0], p2[1], p2[2], p1[0], p1[1], p1[2]], colors)
-                face = []
+                        color_vertices = [color0, color1, color2]
+                        uv0 = (texCoord[t0 * 2], texCoord[t0 * 2 + 1]) if texCoord else (0, 0)
+                        uv1 = (texCoord[t1 * 2], texCoord[t1 * 2 + 1]) if texCoord else (0, 0)
+                        uv2 = (texCoord[t2 * 2], texCoord[t2 * 2 + 1]) if texCoord else (0, 0)
+                        colors["texCoord"] = [uv0, uv1, uv2]
+                        colors["colorVertices"] = color_vertices
+                        GL.triangleSet([p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]], colors)
+                current_face = []
             else:
-                face.append((coord[idx * 3], coord[idx * 3 + 1], coord[idx * 3 + 2]))
+                #Adiciona os parametros da face atual
+                current_face.append((coord[index * 3: index * 3 + 3], colorIndex[index] if colorPerVertex else 0, texCoordIndex[index] if texCoord else 0))
 
     @staticmethod
     def box(size, colors):
@@ -658,10 +698,6 @@ class GL:
         # e Z, respectivamente, e cada valor do tamanho deve ser maior que zero. Para desenha
         # essa caixa você vai provavelmente querer tesselar ela em triângulos, para isso
         # encontre os vértices e defina os triângulos.
-
-        # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
-        print("Box : size = {0}".format(size)) # imprime no terminal pontos
-        print("Box : colors = {0}".format(colors)) # imprime no terminal as cores
 
         # Exemplo de desenho de um pixel branco na coordenada 10, 10
         gpu.GPU.draw_pixel([10, 10], gpu.GPU.RGB8, [255, 255, 255])  # altera pixel
