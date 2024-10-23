@@ -107,7 +107,7 @@ class GL:
         if color == [0, 0, 0]:
             color = [int(c * 255) for c in diffuse_color]
 
-        vertex_colors = colors.get("colorVertices", None)
+        # vertex_colors = colors.get("colorVertices", None)
         texCoord = colors.get("texCoord", None)
         current_texture = colors.get("currentTexture", None)
         Z = colors.get("Z", None)
@@ -216,20 +216,21 @@ class GL:
                         if texCoord is not None and current_texture is not None:
                             color = apply_texture((sx, sy), (x0, y0), (x1, y1), (x2, y2), texCoord, current_texture, Z)
                             GL.draw_point_safe(sx, sy, color)
-                        elif vertex_colors:
-                            alpha, beta, gamma = barycentric_coords((sx, sy), (x0, y0), (x1, y1), (x2, y2))
-                            interpolated_Z = alpha * Z[0] + beta * Z[1] + gamma * Z[2]
-                            interpol = interpolated_color(
-                                alpha,
-                                beta,
-                                gamma,
-                                interpolated_Z,
-                                vertex_colors[0],
-                                vertex_colors[1],
-                                vertex_colors[2]
-                            )
-                            interpol = [min(255, a) for a in interpol]
-                            GL.draw_point_safe(sx, sy, interpol)
+                        # elif vertex_colors:
+                        #     alpha, beta, gamma = barycentric_coords((sx, sy), (x0, y0), (x1, y1), (x2, y2))
+                        #     interpolated_Z = alpha * Z[0] + beta * Z[1] + gamma * Z[2]
+                        #     interpol = interpolated_color(
+                        #         alpha,
+                        #         beta,
+                        #         gamma,
+                        #         interpolated_Z,
+                        #         vertex_colors[0],
+                        #         vertex_colors[1],
+                        #         vertex_colors[2]
+                        #     )
+                        #     interpol = [min(255, a) for a in interpol]
+                        #     print('ta entrando no interpol')
+                        #     GL.draw_point_safe(sx, sy, interpol)
                         else:
                             GL.draw_point_safe(sx, sy, color)
 
@@ -650,7 +651,6 @@ class GL:
         # textura para o poligono, para isso, use as coordenadas de textura e depois aplique a
         # cor da textura conforme a posição do mapeamento. Dentro da classe GPU já está
         # implementadado um método para a leitura de imagens.
-        # print(colors)
         current_face = []
         if not colorPerVertex:
             color = [1, 1, 1]
@@ -691,34 +691,70 @@ class GL:
     @staticmethod
     def box(size, colors):
         """Função usada para renderizar Boxes."""
-        # https://www.web3d.org/specifications/X3Dv4/ISO-IEC19775-1v4-IS/Part01/components/geometry3D.html#Box
-        # A função box é usada para desenhar paralelepípedos na cena. O Box é centrada no
-        # (0, 0, 0) no sistema de coordenadas local e alinhado com os eixos de coordenadas
-        # locais. O argumento size especifica as extensões da caixa ao longo dos eixos X, Y
-        # e Z, respectivamente, e cada valor do tamanho deve ser maior que zero. Para desenha
-        # essa caixa você vai provavelmente querer tesselar ela em triângulos, para isso
-        # encontre os vértices e defina os triângulos.
+        vertices = []
+        indices = []
 
-        # Exemplo de desenho de um pixel branco na coordenada 10, 10
-        gpu.GPU.draw_pixel([10, 10], gpu.GPU.RGB8, [255, 255, 255])  # altera pixel
+        # Ensure size is a single numeric value
+        if isinstance(size, list):
+            size = size[0]
+
+        # Define the 8 vertices of the cube
+        vertices = np.array([
+            -1, 1, -1,
+            -1,  1, 1,
+            1,  1, 1,
+            1, 1, -1,
+            -1, -1,  -1,
+            -1,  -1,  1,
+            1,  -1,  1,
+            1, -1,  -1
+        ])
+        vertices = (size / 2) * vertices
+
+        # Define the 12 triangles (2 per face) using the indices of the vertices
+        indices = [
+            0, 1, 2, -1, 2, 3, 0, -1,  # Front face
+            4, 5, 6, -1, 6, 7, 4, -1,  # Back face
+            0, 1, 5, -1, 5, 4, 0, -1,  # Bottom face
+            2, 3, 7, -1, 7, 6, 2, -1,  # Top face
+            0, 3, 7, -1, 7, 4, 0, -1,  # Left face
+            1, 2, 6, -1, 6, 5, 1, -1   # Right face
+        ]
+        GL.indexedFaceSet(vertices, indices, None, None, None, None, None, colors, None)
 
     @staticmethod
-    def sphere(radius, colors):
+    def sphere(radius, colors, segments=36, rings=18):
         """Função usada para renderizar Esferas."""
-        # https://www.web3d.org/specifications/X3Dv4/ISO-IEC19775-1v4-IS/Part01/components/geometry3D.html#Sphere
-        # A função sphere é usada para desenhar esferas na cena. O esfera é centrada no
-        # (0, 0, 0) no sistema de coordenadas local. O argumento radius especifica o
-        # raio da esfera que está sendo criada. Para desenha essa esfera você vai
-        # precisar tesselar ela em triângulos, para isso encontre os vértices e defina
-        # os triângulos.
+        vertices = []
+        indices = []
 
-        # O print abaixo é só para vocês verificarem o funcionamento, DEVE SER REMOVIDO.
-        print(
-            "Sphere : radius = {0}".format(radius)
-        )  # imprime no terminal o raio da esfera
-        print(
-            "Sphere : colors = {0}".format(colors)
-        )  # imprime no terminal as cores
+        for i in range(rings + 1):
+            theta = i * math.pi / rings
+            sin_theta = math.sin(theta)
+            cos_theta = math.cos(theta)
+
+            for j in range(segments + 1):
+                phi = j * 2 * math.pi / segments
+                sin_phi = math.sin(phi)
+                cos_phi = math.cos(phi)
+
+                x = cos_phi * sin_theta
+                y = cos_theta
+                z = sin_phi * sin_theta
+
+                vertices.extend([radius * x, radius * y, radius * z])
+
+        for i in range(rings):
+            for j in range(segments):
+                first = (i * (segments + 1)) + j
+                second = first + segments + 1
+
+                indices.extend([first, second, first + 1, -1])
+                indices.extend([second, second + 1, first + 1, -1])
+
+
+        GL.indexedFaceSet(vertices, indices, None, None, None, None, None, colors, None)
+
 
     @staticmethod
     def cone(bottomRadius, height, colors):
